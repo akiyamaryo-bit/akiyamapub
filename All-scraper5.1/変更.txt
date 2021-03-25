@@ -1,0 +1,3 @@
+csv格納先を c:/data/data.csvに変更
+
+※c直下にdataというフォルダが前もって必要
