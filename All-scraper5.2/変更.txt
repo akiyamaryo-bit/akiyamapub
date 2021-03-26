@@ -1,0 +1,3 @@
+unicode関連errorhandling
+
+logging機能　→　dataフォルダ内に作成
