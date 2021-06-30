@@ -1,0 +1,1032 @@
+
+# 2021/5/12更新
+
+# 2021/6/05更新 -> 新項目追加
+"""  解説
+保存先： C:/data/data.csv
+ログ先： C:\data\datalog.log
+"""
+
+import logging
+from logging import basicConfig, fatal, getLogger, DEBUG
+from typing import Tuple
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException, ElementNotInteractableException
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+from urllib.request import urlopen
+from urllib.parse import urlparse
+from bs4 import BeautifulSoup
+import requests
+import gettext
+import os
+import re
+import csv
+import time
+import sys
+import datetime
+from tkinter import messagebox
+from tkinter import messagebox as mbox
+import tkinter as tk
+
+
+# このスクリプト本体のロガーを取得してログレベルを設定する
+logger = getLogger(__name__)
+# logger.setLevel(logging.DEBUG)  #loggerとしてはDEBUGで
+
+
+backselector = ''  # １地域走査したら戻る県のセレクター用グロバル変数
+speed = 5  # スクレイプ速度用
+startpoint = 1  # 開始都道府県用
+endpoint = 1  # 終了都道府県用
+startpoint2 = 0  # 開始地域番号
+sccount = 1000  # 1地域集める数
+
+win = tk.Tk()  # ここで初期化(newしないと下でできない)
+bln1 = tk.BooleanVar()  # group1集めるかのチェック
+bln1.set(False)
+bln2 = tk.BooleanVar()  # group2集めるかのチェック
+bln2.set(False)
+
+now = datetime.datetime.now()
+
+
+def tkcreate():
+
+    # ウィンドウを作成 --- (*2)
+    win.title("All-scraper GUI (ver5.4)")  # タイトル
+    win.geometry("300x400")  # サイズ
+
+    # 部品作成
+    # label
+    label = tk.Label(win, text='speed(1-10  1=Fastest,10=Slowest)')
+    label.pack()  # これで作成したものをウィンドウ上に表示する。
+
+    # textbox for seed
+    text = tk.Entry(win)
+    text.pack()
+    text.insert(tk.END, '1-10')
+
+    # label
+    label = tk.Label(win, text='開始都道府県(1-47)')  # startpoint
+    label.pack()  # これで作成したものをウィンドウ上に表示する。
+
+    # textbox for selectstartpoint
+    text2 = tk.Entry(win)
+    text2.pack()
+    text2.insert(tk.END, '')
+
+    # label
+    label = tk.Label(win, text='終了都道府県番号(1-47)')  # endpoint
+    label.pack()  # これで作成したものをウィンドウ上に表示する。
+
+    # textbox for selectendpoint
+    text5 = tk.Entry(win)
+    text5.pack()
+    text5.insert(tk.END, '')
+
+    # label
+    label = tk.Label(win, text='1地域集める数(1000=全て)')  # sccount
+    label.pack()  # これで作成したものをウィンドウ上に表示する。
+
+    # textbox for selectstartpoint
+    text3 = tk.Entry(win)
+    text3.pack()
+    text3.insert(tk.END, '1000')
+
+    # label
+    label = tk.Label(win, text='開始地域番号(0-)')  # startpoint2
+    label.pack()  # これで作成したものをウィンドウ上に表示する。
+
+    # textbox for selectstartpoint
+    text4 = tk.Entry(win)
+    text4.pack()
+    text4.insert(tk.END, '0')
+
+    # label
+    label = tk.Label(win, text='group1収集')  # startpoint2
+    label.pack()  # これで作成したものをウィンドウ上に表示する。
+
+    # チェックボタン
+    chk1 = tk.Checkbutton(win, variable=bln1, text='group1を収集する')
+    chk1.pack()
+
+    # チェックボタン
+    chk2 = tk.Checkbutton(win, variable=bln2, text='group2を収集する')
+    chk2.pack()
+
+    # ☑を逆にする処理関数
+    def reverse_chk_button_for_bln1():
+        value = bln1.get()
+        bln1.set(not value)
+
+    def reverse_chk_button_for_bln2():
+        value = bln2.get()
+        bln2.set(not value)
+
+    # チェック状態を逆にするボタン
+    button1 = tk.Button(win, text="group1チェックを逆にする",
+                        command=reverse_chk_button_for_bln1)
+    button1.pack()
+    button2 = tk.Button(win, text="group2チェックを逆にする",
+                        command=reverse_chk_button_for_bln2)
+    button2.pack()
+
+    # チェックされているか？
+    # if bln.get():
+
+    # ボタン押したときの処理
+
+    def ok_click():
+        global speed
+        global startpoint
+        global endpoint
+        global sccount
+        global startpoint2
+        spe = text.get()
+        stp = text2.get()
+        edp = text5.get()
+        sc = text3.get()
+        stp2 = text4.get()
+        spe = int(spe)
+        stp = int(stp)
+        edp = int(edp)
+        sc = int(sc)
+        stp2 = int(stp2)
+        speed = spe
+        startpoint = stp
+        endpoint = edp
+        sccount = sc
+        startpoint2 = stp2
+        win.destroy()  # これでメインのコマンドに戻る
+        # mbox.showinfo('hello',s)
+
+    # button
+    okButton = tk.Button(win, text='開始', command=ok_click)
+    okButton.pack()
+
+    # ウィンドウを動かす --- (*3)
+    win.mainloop()
+
+
+def dummy_sleep(sec, browser):
+    wait = WebDriverWait(browser, 1)
+
+    for i in range(sec):
+        try:
+            xpath = 'dummy'
+            wait.until(EC.presence_of_all_elements_located((By.XPATH, xpath)))
+        except:
+            pass
+
+
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.dirname(__file__)
+    return os.path.join(base_path, relative_path)
+
+
+browser = webdriver.Chrome(resource_path('./driver/chromedriver.exe'))
+
+
+def main():
+
+    global backselector
+    global startpoint  # 都道府県
+    global startpoint2  # 地域
+    global endpoint  # 終了都道府県
+    global bln1
+    global bln2
+
+    tkcreate()
+
+    #spe = input('tell me speed in 1-10 (1:fastest 10:slowest)')
+    #speed = int(spe)
+    #startp = input('tell me startpoint in 1-47 (1:北海道  47:沖縄県)')
+    #startpoint = int(startp)
+
+    # 県をクリック後➡preflinl(地域へ行くボタン)を全て取得elements[0]～lenマックスまで取得し、forで一個ずつ処理、処理はその地域内の全件を走査。その後また地域に戻りfor文で次の地域へ
+    browser.get('https://www.wam.go.jp/sfkohyoout/COP000100E0000.do#')
+    starturl = 'https://www.wam.go.jp'
+
+    dummy_sleep(1, browser)
+
+    # 県選択（全国）
+    kenlink = '#pref'
+    # for i in range(startpoint, 47):
+    for i in range(startpoint, endpoint):
+        sele1 = kenlink
+        sele2 = i
+        if sele2 == 1:
+            sele2 = '01'
+        if sele2 == 2:
+            sele2 = '02'
+        if sele2 == 3:
+            sele2 = '03'
+        if sele2 == 4:
+            sele2 = '04'
+        if sele2 == 5:
+            sele2 = '05'
+        if sele2 == 6:
+            sele2 = '06'
+        if sele2 == 7:
+            sele2 = '07'
+        if sele2 == 8:
+            sele2 = '08'
+        if sele2 == 9:
+            sele2 = '09'
+        sele3 = str(sele2)
+        backselector = sele1 + sele3
+        elem = browser.find_element_by_css_selector(backselector)
+        elem.click()
+        dummy_sleep(speed, browser)
+
+        # group1収集に☑があれば以下収集
+        if bln1.get():
+            # 問題児↓
+            # 地域選択（全て）
+            preflinks = browser.find_elements_by_class_name('preflink')
+            print(len(preflinks))
+
+            for i in range(startpoint2, len(preflinks)):
+                dummy_sleep(speed, browser)
+                jjlist = []
+                preflink = preflinks[i]
+                preflink.click()
+                dummy_sleep(speed, browser)
+
+                # 該当地域に事業所がない場合のエラーはんどる
+                # find_elements_にしないと存在かくにんできない
+                selector3 = '#service'  # これ押すとプルダウンが出るがその動作が遅いので、すぐにダウンメニューを選択しようとするとないとエラー出る
+                if browser.find_elements_by_css_selector(selector3):
+                    elem = browser.find_element_by_css_selector(selector3)
+                    dummy_sleep(speed, browser)
+
+                    # ここにもう一つtryを挟む→これでElementNotInteractableExceptionに対処
+                    for _ in range(10):  # 最大10回実行
+                        try:
+                            selector3 = '#service'
+                            elem = browser.find_element_by_css_selector(
+                                selector3)
+                            elem.click()
+                        except ElementNotInteractableException:
+                            print(ElementNotInteractableException)
+                            dummy_sleep(3, browser)
+                        else:
+                            break
+                    else:  # all失敗時の処理↓
+                        messagebox.showerror(
+                            'error', '10回のリトライが失敗に終わりましたのでプログラム終了します。秋山まで連絡ください。errorcode=ElementNotInteractableException')
+                        print(
+                            '10回のリトライが失敗に終わりましたのでプログラム終了します。秋山まで連絡ください。errorcode=ElementNotInteractableException')
+                        sys.exit()
+
+                else:
+                    # ないので次の地域の為に県選択に戻りつつ、本ループを終了し、次のループで（次の地域preflinks番号へ）
+                    # 次の地域のため、県選択に戻る
+                    browser.get(
+                        'https://www.wam.go.jp/sfkohyoout/COP000100E0000.do#')
+                    elem2 = browser.find_element_by_css_selector(backselector)
+                    elem2.click()
+                    dummy_sleep(speed, browser)
+                    preflinks = browser.find_elements_by_class_name('preflink')
+                    print(len(preflinks))
+                    continue
+
+                dummy_sleep(speed, browser)
+
+                print(
+                    'kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk')
+
+                #########################################################################
+                ####################group1(児童発達支援,放課後デイサービス,生活介護)#########
+                #########################################################################
+
+                ####################サービス選択児童発達支援に☑############################
+                for _ in range(10):  # 最大10回実行
+                    try:
+                        # 児童発達支援に☑(サービス選択)
+                        selector4 = '#service_list > fieldset > table:nth-child(7) > tbody > tr:nth-child(3) > td:nth-child(2) > span > label'
+                        elem = browser.find_element_by_css_selector(selector4)
+                        elem.click()
+                        dummy_sleep(speed, browser)
+
+                    except ElementNotInteractableException:
+                        print(ElementNotInteractableException)
+                        dummy_sleep(3, browser)
+                    else:
+                        break
+                else:  # all失敗時の処理↓
+                    messagebox.showerror(
+                        'error', '10回のリトライが失敗に終わりましたのでプログラム終了します。秋山まで連絡ください。errorcode=ElementNotInteractableException')
+                    sys.exit()
+
+                dummy_sleep(speed, browser)
+
+                ####################サービス選択放課後デイサービスに☑############################
+                for _ in range(10):  # 最大10回実行
+                    try:
+                        # 放課後デイサービスに☑(サービス選択)
+                        selector5 = '#service_list > fieldset > table:nth-child(7) > tbody > tr:nth-child(3) > td:nth-child(4) > span > label'
+                        elem = browser.find_element_by_css_selector(selector5)
+                        elem.click()
+
+                    except ElementNotInteractableException:
+                        print(ElementNotInteractableException)
+                        time.sleep(3)  # 秒
+                        dummy_sleep(speed, browser)
+                    else:
+                        break
+                else:  # all失敗時の処理↓
+                    messagebox.showerror(
+                        'error', '10回のリトライが失敗に終わりましたのでプログラム終了します。秋山まで連絡ください。errorcode=ElementNotInteractableException')
+                    sys.exit()
+
+                dummy_sleep(speed, browser)
+
+                ####################サービス選択生活介護に☑############################
+                for _ in range(10):  # 最大10回実行
+                    try:
+                        # 選択生活介護に☑(サービス選択)
+                        selector5 = '#service_list > fieldset > table:nth-child(3) > tbody > tr:nth-child(3) > td:nth-child(3) > span > label'
+                        elem = browser.find_element_by_css_selector(selector5)
+                        elem.click()
+
+                    except ElementNotInteractableException:
+                        print(ElementNotInteractableException)
+                        time.sleep(3)  # 秒
+                        dummy_sleep(speed, browser)
+                    else:
+                        break
+                else:  # all失敗時の処理↓
+                    messagebox.showerror(
+                        'error', '10回のリトライが失敗に終わりましたのでプログラム終了します。秋山まで連絡ください。errorcode=ElementNotInteractableException')
+                    sys.exit()
+
+                dummy_sleep(speed, browser)
+
+                # 選択したサービス種別における事業所一覧の取得
+                count = 0
+                html = browser.page_source
+                bsObj = BeautifulSoup(html, 'html.parser')
+                for link in bsObj.findAll('a', class_='detail-button', href=re.compile('/sfkohyoout/')):
+                    if 'href' in link.attrs:
+                        if count < sccount:
+                            baseurl = urlparse(starturl).scheme + \
+                                "://"+urlparse(starturl).netloc
+                            linkcus = baseurl+link.attrs['href']
+                            jjlist.append(linkcus)
+                            print(linkcus)
+                            count = count+1
+
+                dummy_sleep(speed, browser)
+
+                # 各事業所から欲しい情報を取得
+                for i in jjlist:
+
+                    browser.get(i)
+                    dummy_sleep(speed, browser)
+                    html = urlopen(i)
+                    bsObj = BeautifulSoup(html, "html.parser")
+
+                    kk4 = kk3 = ll3 = ll = ll2 = kk2 = None
+
+                    for _ in range(10):  # 最大10回実行
+                        try:
+                            # FAX
+                            # kk=bsObj.findAll('td')[16]
+                            # 住所
+                            kk2 = bsObj.findAll('td')[10]
+                            # 電話
+                            kk3 = bsObj.findAll('td')[14]
+                            # 事業所名
+                            kk4 = bsObj.findAll('td')[6]
+
+                            # サービス種別(ここでno such element error unable to locate)
+                            try:
+                                kk10 = browser.find_element_by_css_selector(
+                                    "#page > form > div > div.container-fluid > div:nth-child(4) > table > tbody > tr:nth-child(1) > td:nth-child(1) > table > tbody > tr:nth-child(1) > td > table > tbody > tr > td:nth-child(1) > table > tbody > tr > td"
+                                )
+                            except Exception as e:
+                                kk10 = 'サービス種別なし'
+                                # サービス種別を事業所の文字列に連結する
+                                kk4 = kk4.get_text(strip=True) + '(' + kk10 + ')'
+                            else:
+                                # サービス種別を事業所の文字列に連結する
+                                kk4 = kk4.get_text(strip=True) + '(' + kk10.text + ')'
+
+
+                            # 事業開始
+                            ll = bsObj.findAll(class_="tb04_td_up")[11]
+                            # 法人代表者
+                            ll2 = bsObj.findAll(class_="tb04_td_up")[9]
+                            # 法人名
+                            ll3 = bsObj.findAll(class_="tb04_td_up")[3]
+
+                        except Exception as e:
+                            print('no such element try * 10')
+                            print(e)
+                            time.sleep(2)  # 秒
+                        else:
+                            break
+                    else:  # all失敗時の処理↓
+                        print('10回のリトライが失敗->事業所情報なし？')
+
+                    a1 = print('事業所名:'+kk4)
+                    # a2=print('FAX:'+kk.get_text())
+                    a3 = print('電話:'+kk3.get_text())
+                    a4 = print('法人名:'+ll3.get_text())
+                    a5 = print('法人設立日:'+ll.get_text())
+                    a6 = print('法人代表者:'+ll2.get_text())
+                    a7 = print('住所:'+kk2.get_text())
+
+                    csvRow = []
+                    csvRow.append(kk4)
+                    # csvRow.append(kk.get_text())
+                    csvRow.append(kk3.get_text())
+                    csvRow.append(ll3.get_text())
+                    csvRow.append(ll.get_text())
+                    csvRow.append(ll2.get_text())
+                    csvRow.append(kk2.get_text())
+                    # with open(r'C:\Users\akiya\Desktop\data.csv', 'a') as f:#既存のCSVに追記
+                    #    writer = csv.writer(f)
+                    #f.write("{0}, {1}, {2}, {3}\n".format(a1, a2, a3, a4))
+                    #    writer.writerow(csvRow)
+
+                    dummy_sleep(speed, browser)
+                    for _ in range(10):  # 最大10回実行
+                        try:
+                            # タブ遷移
+                            selector = '#tab2_title'
+                            elem = browser.find_element_by_css_selector(
+                                selector)
+                            elem.click()
+
+                        except NoSuchElementException:
+                            print('click error')
+                            time.sleep(3)  # 秒
+                        else:
+                            break
+                    else:  # all失敗時の処理↓
+                        messagebox.showerror(
+                            'error', '10回のリトライが失敗に終わりましたのでプログラム終了します。秋山まで連絡ください。errorcode=ElementNotInteractableException')
+                        print(
+                            '10回のリトライが失敗に終わりましたのでプログラム終了します。秋山まで連絡ください。errorcode=ElementNotInteractableException')
+                        sys.exit()
+
+                    # 事業所の開始年月日(ここでno such element exception)
+                    try:
+                        c = browser.find_element_by_css_selector(
+                            ' #page > form > div > div.container-fluid > fieldset:nth-child(19) > div > table > tbody > tr:nth-child(2) > td:nth-child(2)')
+                        c = c.get_attribute("textContent")
+                        print('事業所の開始年月日'+c)
+                        csvRow.append(c)
+                        # csvRow.append('\u2015')
+
+                        selector = '#tab4_title'
+                        elem = browser.find_element_by_css_selector(selector)
+                        elem.click()
+                        dummy_sleep(speed, browser)
+                    except NoSuchElementException:
+                        print("事業所の開始年月日記述なし" +
+                              '\n''\n''\n''\n''\n''\n')
+
+                    try:
+                        # 対象
+                        c = browser.find_element_by_css_selector(
+                            '#page > form > div > div.container-fluid > div:nth-child(18) > fieldset:nth-child(3) > div > table > tbody > tr:nth-child(2) > td:nth-child(2)')
+                        c = c.get_attribute("textContent")
+                        print('対象・・・'+c)
+                        csvRow.append(c)
+                        # 利用定員
+                        c = browser.find_element_by_css_selector(
+                            '#page > form > div > div.container-fluid > div:nth-child(18) > fieldset:nth-child(3) > div > table > tbody > tr:nth-child(5) > td:nth-child(2)')
+                        c = c.get_attribute("textContent")
+                        print('利用定員'+c)
+                        csvRow.append(c)
+
+                        # 各種サービス項目
+                        c = browser.find_element_by_css_selector(
+                            '#vo_headVO_absorption_field')
+                        c = c.find_element_by_class_name(
+                            "radio-parts-checked").text
+                        c2 = '吸引='
+                        c2 += c
+                        # print("checked")
+                        print("吸引・・・・・・・・・・・・"+c)
+                        csvRow.append(c2)
+
+                        c = browser.find_element_by_css_selector(
+                            '#vo_headVO_nebulizer_field')
+                        c = c.find_element_by_class_name(
+                            "radio-parts-checked").text
+                        c2 = '吸入・ネブライザー='
+                        c2 += c
+                        # print("checked")
+                        print("吸入・ネブライザー・・・・・"+c)
+                        csvRow.append(c2)
+
+                        c = browser.find_element_by_css_selector(
+                            '#vo_headVO_gavage_field')
+                        c = c.find_element_by_class_name(
+                            "radio-parts-checked").text
+                        c2 = '経管栄養（胃ろうを含む）='
+                        c2 += c
+                        # print("checked")
+                        print("経管栄養（胃ろうを含む）・・"+c)
+                        csvRow.append(c2)
+
+                        c = browser.find_element_by_css_selector(
+                            '#vo_headVO_centralVenousNutrition_field')
+                        c = c.find_element_by_class_name(
+                            "radio-parts-checked").text
+                        c2 = '中心静脈栄養='
+                        c2 += c
+                        # print("checked")
+                        print("中心静脈栄養・・・・・・・・"+c)
+                        csvRow.append(c2)
+
+                        c = browser.find_element_by_css_selector(
+                            '#vo_headVO_urethralCatheterization_field')
+                        c = c.find_element_by_class_name(
+                            "radio-parts-checked").text
+                        c2 = '導尿='
+                        c2 += c
+                        # print("checked")
+                        print("導尿・・・・・・・・・・・・"+c)
+                        csvRow.append(c2)
+
+                        c = browser.find_element_by_css_selector(
+                            '#vo_headVO_homeOxygenTherapy_field')
+                        c = c.find_element_by_class_name(
+                            "radio-parts-checked").text
+                        c2 = '在宅酸素療法='
+                        c2 += c
+                        # print("checked")
+                        print("在宅酸素療法・・・・・・・・"+c)
+                        csvRow.append(c2)
+
+                        c = browser.find_element_by_css_selector(
+                            '#vo_headVO_pharyngealAirway_field')
+                        c = c.find_element_by_class_name(
+                            "radio-parts-checked").text
+                        c2 = '咽頭エアウェイ='
+                        c2 += c
+                        # print("checked")
+                        print("咽頭エアウェイ・・・・・・・"+c)
+                        csvRow.append(c2)
+
+                        c = browser.find_element_by_css_selector(
+                            '#vo_headVO_pulseOximeter_field')
+                        c = c.find_element_by_class_name(
+                            "radio-parts-checked").text
+                        c2 = 'パルスオキシメーター='
+                        c2 += c
+                        # print("checked")
+                        print("パルスオキシメーター・・・・"+c)
+                        csvRow.append(c2)
+
+                        c = browser.find_element_by_css_selector(
+                            '#vo_headVO_tracheotomyManagement_field')
+                        c = c.find_element_by_class_name(
+                            "radio-parts-checked").text
+                        c2 = '気管切開部の管理（ガーゼ交換等）='
+                        c2 += c
+                        # print("checked")
+                        print("気管切開部の管理（ガーゼ交換等）・・"+c)
+                        csvRow.append(c2)
+
+                        c = browser.find_element_by_css_selector(
+                            '#vo_headVO_ventilatorManagement_field')
+                        c = c.find_element_by_class_name(
+                            "radio-parts-checked").text
+                        c2 = '人工呼吸器の管理='
+                        c2 += c
+                        # print("checked")
+                        print("人工呼吸器の管理・・・・・・"+c)
+                        csvRow.append(c2)
+
+                        c = browser.find_element_by_css_selector(
+                            '#vo_headVO_medicationManagement_field')
+                        c = c.find_element_by_class_name(
+                            "radio-parts-checked").text
+                        c2 = '服薬管理='
+                        c2 += c
+                        # print("checked")
+                        print("服薬管理・・・"+c+'\n''\n''\n''\n')
+                        csvRow.append(c2)
+                    except NoSuchElementException:
+                        print("医療的ケアを必要とする利用者の受入体制情報なし" +
+                              '\n''\n''\n''\n''\n''\n')
+
+                    #replace_list = [s.replace('\n', '') for s in str_list]
+
+                    ###############group2用のcsv作成＆書き込み#############################
+                    # 既存のCSVに追記(mail)
+                    with open(r'C:\data\data2' + now.strftime('%Y%m%d_%H%M%S') + '.csv', 'a', newline="",) as f:
+                        writer = csv.writer(f)
+
+                        # unicordeerrorとなるやつを取り除く
+                        #csvRow2 = [re.sub('\u2014', '',) for s in csvRow]
+                        csvRow2 = [re.sub('\u2014|�', '', s) for s in csvRow]
+                        try:
+                            writer.writerow(csvRow2)
+                        except Exception as e:
+                            logger.error(e, exc_info=True)
+                            # メッセージボックス表示して終了
+                            messagebox.showerror(
+                                "予期したエラー", e + "の為終了します。報告ください")
+                            browser.close()
+                            browser.quit()
+                        # f.write("{0}, {1}, {2}, {3}\n".format(a1, a2, a3, a4))
+
+                        # ↓の方法で回避すると、その事業所の書き込みがされないので、↑のやり方逐一エラー出た場合つぶしていく
+                        # try:
+                        #     writer.writerow(csvRow)
+                        # except:
+                        #     logger.error("UnicodeEncodeError!!" + kk4.get_text(strip=True))
+                        #     writer.writerow(csvRow)
+
+                # 次の地域のため、県選択に戻る
+                browser.get(
+                    'https://www.wam.go.jp/sfkohyoout/COP000100E0000.do#')
+
+                elem2 = browser.find_element_by_css_selector(backselector)
+                elem2.click()
+                dummy_sleep(speed, browser)
+                preflinks = browser.find_elements_by_class_name('preflink')
+                print(len(preflinks))
+
+                # os.system('PAUSE')
+
+            dummy_sleep(speed, browser)
+
+            # group1の該当都道府県収集を終え、次にgroup2の該当都道府県を収集
+        if bln2.get():
+            # 問題児↓
+            # 地域選択（全て）
+            preflinks = browser.find_elements_by_class_name('preflink')
+            print(len(preflinks))
+
+            for i in range(startpoint2, len(preflinks)):
+                dummy_sleep(speed, browser)
+                jjlist = []
+                preflink = preflinks[i]
+                preflink.click()
+                dummy_sleep(speed, browser)
+
+                # 該当地域に事業所がない場合のエラーはんどる
+                # find_elements_にしないと存在かくにんできない
+                selector3 = '#service'  # これ押すとプルダウンが出るがその動作が遅いので、すぐにダウンメニューを選択しようとするとないとエラー出る
+                if browser.find_elements_by_css_selector(selector3):
+                    elem = browser.find_element_by_css_selector(selector3)
+                    dummy_sleep(speed, browser)
+
+                    # ここにもう一つtryを挟む→これでElementNotInteractableExceptionに対処
+                    for _ in range(10):  # 最大10回実行
+                        try:
+                            selector3 = '#service'
+                            elem = browser.find_element_by_css_selector(
+                                selector3)
+                            elem.click()
+                        except ElementNotInteractableException:
+                            print(ElementNotInteractableException)
+                            dummy_sleep(3, browser)
+                        else:
+                            break
+                    else:  # all失敗時の処理↓
+                        messagebox.showerror(
+                            'error', '10回のリトライが失敗に終わりましたのでプログラム終了します。秋山まで連絡ください。errorcode=ElementNotInteractableException')
+                        print(
+                            '10回のリトライが失敗に終わりましたのでプログラム終了します。秋山まで連絡ください。errorcode=ElementNotInteractableException')
+                        sys.exit()
+
+                else:
+                    # ないので次の地域の為に県選択に戻りつつ、本ループを終了し、次のループで（次の地域preflinks番号へ）
+                    # 次の地域のため、県選択に戻る
+                    browser.get(
+                        'https://www.wam.go.jp/sfkohyoout/COP000100E0000.do#')
+                    elem2 = browser.find_element_by_css_selector(
+                        backselector)
+                    elem2.click()
+                    dummy_sleep(speed, browser)
+                    preflinks = browser.find_elements_by_class_name(
+                        'preflink')
+                    print(len(preflinks))
+                    continue
+
+                dummy_sleep(speed, browser)
+
+                #########################################################################
+                ####################group2(計画相談支援,障害児相談支援)#########
+                #########################################################################
+
+                ####################サービス選択計画相談支援支援に☑############################
+                for _ in range(10):  # 最大10回実行
+                    try:
+                        # 計画相談支援に☑(サービス選択)
+                        selector4 = '#service_list > fieldset > table:nth-child(9) > tbody > tr:nth-child(3) > td:nth-child(4) > span > label'
+                        elem = browser.find_element_by_css_selector(
+                            selector4)
+                        elem.click()
+                        dummy_sleep(speed, browser)
+
+                    except ElementNotInteractableException:
+                        print(ElementNotInteractableException)
+                        dummy_sleep(3, browser)
+                    else:
+                        break
+                else:  # all失敗時の処理↓
+                    messagebox.showerror(
+                        'error', '10回のリトライが失敗に終わりましたのでプログラム終了します。秋山まで連絡ください。errorcode=ElementNotInteractableException')
+                    sys.exit()
+
+                dummy_sleep(speed, browser)
+
+                ####################障害児相談支援に☑############################
+                for _ in range(10):  # 最大10回実行
+                    try:
+                        # 障害児相談支援に☑(サービス選択)
+                        selector5 = '#service_list > fieldset > table:nth-child(9) > tbody > tr:nth-child(4) > td.subservice08 > span > label'
+                        elem = browser.find_element_by_css_selector(
+                            selector5)
+                        elem.click()
+
+                    except ElementNotInteractableException:
+                        print(ElementNotInteractableException)
+                        time.sleep(3)  # 秒
+                        dummy_sleep(speed, browser)
+                    else:
+                        break
+                else:  # all失敗時の処理↓
+                    messagebox.showerror(
+                        'error', '10回のリトライが失敗に終わりましたのでプログラム終了します。秋山まで連絡ください。errorcode=ElementNotInteractableException')
+                    sys.exit()
+
+                dummy_sleep(speed, browser)
+
+                # 選択したサービス種別における事業所一覧の取得
+                count = 0
+                html = browser.page_source
+                bsObj = BeautifulSoup(html, 'html.parser')
+                for link in bsObj.findAll('a', class_='detail-button', href=re.compile('/sfkohyoout/')):
+                    if 'href' in link.attrs:
+                        if count < sccount:
+                            baseurl = urlparse(starturl).scheme + \
+                                "://"+urlparse(starturl).netloc
+                            linkcus = baseurl+link.attrs['href']
+                            jjlist.append(linkcus)
+                            print(linkcus)
+                            count = count+1
+
+                dummy_sleep(speed, browser)
+
+                # 各事業所から欲しい情報を取得(計画相談なのか障害児相談支援なのか・事業所名・住所・電話)
+                for i in jjlist:
+
+                    browser.get(i)
+                    dummy_sleep(speed, browser)
+                    html = urlopen(i)
+                    bsObj = BeautifulSoup(html, "html.parser")
+
+                    kk4 = kk3 = ll3 = ll = ll2 = kk2 = None
+
+                    for _ in range(10):  # 最大10回実行
+                        try:
+                            # サービス種別
+                            kk10 = browser.find_element_by_css_selector(
+                                '#page > form > div > div.container-fluid > div:nth-child(7) > table > tbody > tr:nth-child(1) > td:nth-child(1) > table > tbody > tr:nth-child(1) > td > table > tbody > tr > td:nth-child(1) > table > tbody > tr > td')
+
+                            # 住所
+                            kk2 = bsObj.findAll('td')[10]
+                            # 電話
+                            kk3 = bsObj.findAll('td')[14]
+                            # 事業所名
+                            kk4 = bsObj.findAll('td')[6]
+
+                        except Exception as e:
+                            print('no such element try * 10')
+                            print(e)
+                            time.sleep(2)  # 秒
+                        else:
+                            break
+                    else:  # all失敗時の処理↓
+                        print('10回のリトライが失敗->事業所情報なし？')
+
+                    # サービス種別
+                    kk10 = browser.find_element_by_css_selector(
+                        '#page > form > div > div.container-fluid > div:nth-child(7) > table > tbody > tr:nth-child(1) > td:nth-child(1) > table > tbody > tr:nth-child(1) > td > table > tbody > tr > td:nth-child(1) > table > tbody > tr > td')
+
+                    # 住所
+                    kk2 = bsObj.findAll('td')[10]
+                    # 電話
+                    kk3 = bsObj.findAll('td')[14]
+                    # 事業所名
+                    kk4 = bsObj.findAll('td')[6]
+
+                    # サービス種別を事業所の文字列に連結する
+                    kk4 = kk4.get_text(strip=True) + '(' + kk10.text + ')'
+
+                    a1 = print('事業所名:'+kk4)
+                    # a2=print('FAX:'+kk.get_text())
+                    a3 = print('電話:'+kk3.get_text())
+                    a7 = print('住所:'+kk2.get_text())
+
+                    csvRow = []
+                    csvRow.append(kk4)  # .get_text(strip=True))
+                    csvRow.append(kk3.get_text())
+                    csvRow.append(kk2.get_text())
+
+                    dummy_sleep(speed, browser)
+                    for _ in range(10):  # 最大10回実行
+                        try:
+                            # タブ遷移(従業者に)
+                            selector = '#tab3_title'
+                            elem = browser.find_element_by_css_selector(
+                                selector)
+                            elem.click()
+
+                        except NoSuchElementException:
+                            print('click error')
+                            time.sleep(3)  # 秒
+                        else:
+                            break
+                    else:  # all失敗時の処理↓
+                        messagebox.showerror(
+                            'error', '10回のリトライが失敗に終わりましたのでプログラム終了します。秋山まで連絡ください。errorcode=ElementNotInteractableException')
+                        print(
+                            '10回のリトライが失敗に終わりましたのでプログラム終了します。秋山まで連絡ください。errorcode=ElementNotInteractableException')
+                        sys.exit()
+
+                    # 医療的ケア児等支援者養成研修受講者の一行を取得
+                    # 常勤専従単位/人
+                    c = browser.find_element_by_css_selector(
+                        ' #page > form > div > div.container-fluid > fieldset:nth-child(17) > div > table:nth-child(5) > tbody > tr:nth-child(6) > td.tb03_td_doWn')
+                    c = c.get_attribute("textContent")
+                    print('常勤専従単位/人'+c)
+                    csvRow.append(c)
+                    # 常勤非専従単位/人
+                    c = browser.find_element_by_css_selector(
+                        ' #page > form > div > div.container-fluid > fieldset:nth-child(17) > div > table:nth-child(5) > tbody > tr:nth-child(6) > td:nth-child(3)')
+                    c = c.get_attribute("textContent")
+                    print('常勤非専従単位/人'+c)
+                    csvRow.append(c)
+                    # 非常勤非専従単位/人
+                    c = browser.find_element_by_css_selector(
+                        ' #page > form > div > div.container-fluid > fieldset:nth-child(17) > div > table:nth-child(5) > tbody > tr:nth-child(6) > td:nth-child(4)')
+                    c = c.get_attribute("textContent")
+                    print('非常勤非専従単位/人'+c)
+                    csvRow.append(c)
+                    # 非常勤非専従単位/人
+                    c = browser.find_element_by_css_selector(
+                        ' #page > form > div > div.container-fluid > fieldset:nth-child(17) > div > table:nth-child(5) > tbody > tr:nth-child(6) > td:nth-child(5)')
+                    c = c.get_attribute("textContent")
+                    print('非常勤非専従単位/人'+c)
+                    csvRow.append(c)
+
+                    # 医療的ケア児等コーディネーター養成研修受講者
+                    # 常勤専従単位/人
+                    c = browser.find_element_by_css_selector(
+                        '#page > form > div > div.container-fluid > fieldset:nth-child(17) > div > table:nth-child(5) > tbody > tr:nth-child(7) > td:nth-child(2)')
+                    c = c.get_attribute("textContent")
+                    print('常勤専従単位/人'+c)
+                    csvRow.append(c)
+                    # 常勤非専従単位/人
+                    c = browser.find_element_by_css_selector(
+                        '#page > form > div > div.container-fluid > fieldset:nth-child(17) > div > table:nth-child(5) > tbody > tr:nth-child(7) > td:nth-child(3)')
+                    c = c.get_attribute("textContent")
+                    print('常勤非専従単位/人'+c)
+                    csvRow.append(c)
+                    # 非常勤専従単位/人
+                    c = browser.find_element_by_css_selector(
+                        '#page > form > div > div.container-fluid > fieldset:nth-child(17) > div > table:nth-child(5) > tbody > tr:nth-child(7) > td:nth-child(4)')
+                    c = c.get_attribute("textContent")
+                    print('非常勤専従単位/人'+c)
+                    csvRow.append(c)
+                    # 非常勤専従単位/人
+                    c = browser.find_element_by_css_selector(
+                        '#page > form > div > div.container-fluid > fieldset:nth-child(17) > div > table:nth-child(5) > tbody > tr:nth-child(7) > td:nth-child(5)')
+                    c = c.get_attribute("textContent")
+                    print('非常勤専従単位/人'+c)
+                    csvRow.append(c)
+
+                    # csvRow.append('\u2015')
+
+                    # タブ遷移(事業所運営に)
+                    selector = '#tab6_title'
+                    elem = browser.find_element_by_css_selector(selector)
+                    elem.click()
+                    dummy_sleep(speed, browser)
+
+                    try:
+                        # 重度の肢体不自由等の常時介護を要する利用者に対する障害福祉サービス等の質の確保のための取組をしている
+                        c = browser.find_element_by_css_selector(
+                            '#page > form > div > div.container-fluid > fieldset:nth-child(17) > div > table > tbody > tr:nth-child(12) > td:nth-child(2)')
+                        # class名にradio-parts-checkedが付与されている方がチェックされている方なのでそちらのテキストを採用
+                        c = c.find_element_by_class_name(
+                            "radio-parts-checked").text
+                        print('重度の肢体不自由等の常時介護を要する利...'+c)
+                        csvRow.append(c)
+                    except NoSuchElementException:
+                        print("重度の肢体不自由等の常時介護を要する利...表記なし" +
+                              '\n''\n''\n''\n''\n''\n')
+
+                    ###############group2用のcsv作成＆書き込み#############################
+                    # 既存のCSVに追記(mail)
+                    with open(r'C:\data\data_group2' + now.strftime('%Y%m%d_%H%M%S') + '.csv', 'a', newline="",) as f:
+                        writer = csv.writer(f)
+
+                        # unicordeerrorとなるやつを取り除く
+                        #csvRow2 = [re.sub('\u2014', '',) for s in csvRow]
+                        csvRow2 = [re.sub('\u2014|�', '', s)
+                                   for s in csvRow]
+                        try:
+                            writer.writerow(csvRow2)
+                        except Exception as e:
+                            logger.error(e, exc_info=True)
+                            # メッセージボックス表示して終了
+                            messagebox.showerror(
+                                "予期したエラー", e + "の為終了します。報告ください")
+                            browser.close()
+                            browser.quit()
+                        # f.write("{0}, {1}, {2}, {3}\n".format(a1, a2, a3, a4))
+
+                        # ↓の方法で回避すると、その事業所の書き込みがされないので、↑のやり方逐一エラー出た場合つぶしていく
+                        # try:
+                        #     writer.writerow(csvRow)
+                        # except:
+                        #     logger.error("UnicodeEncodeError!!" + kk4.get_text(strip=True))
+                        #     writer.writerow(csvRow)
+
+                # 次の地域のため、県選択に戻る
+                browser.get(
+                    'https://www.wam.go.jp/sfkohyoout/COP000100E0000.do#')
+
+                elem2 = browser.find_element_by_css_selector(backselector)
+                elem2.click()
+                dummy_sleep(speed, browser)
+                preflinks = browser.find_elements_by_class_name('preflink')
+                print(len(preflinks))
+
+                # os.system('PAUSE')
+
+        # group1,2共に一県終え、次の県選択に戻る
+        browser.get('https://www.wam.go.jp/sfkohyoout/COP000100E0000.do#')
+
+    # 指定都道府県のgroup1の収集を終えたら、今度はgroup2の収集を行う(guiでどのグループを収集するか選択させるとgood)
+
+    # with open(r'C:\data\data' + now.strftime('%Y%m%d_%H%M%S') + '.csv') as f:
+    #     print(f.read())
+
+    os.system('PAUSE')
+
+
+if __name__ == "__main__":
+
+    # このスクリプトから呼び出されるモジュール全体のログ設定を行う
+    # sh = logging.FileHandler(filename="./testtesttesttest.log")
+    # basicConfig(
+    #     handlers=[sh],
+    #     format='[%(asctime)s] %(name)s %(levelname)s: %(message)s',
+    #     datefmt='%Y-%m-%d %H:%M:%S',
+    #     # filename="testtesttest.log",
+    # )
+
+    logging.basicConfig(filename=r'C:\data\datalog.log', level=logging.ERROR)
+
+    with open(r'C:\data\data' + now.strftime('%Y%m%d_%H%M%S') + '.csv', 'w') as f:  # group1
+        writer = csv.writer(f)
+    with open(r'C:\data\data_group2' + now.strftime('%Y%m%d_%H%M%S') + '.csv', 'w') as f:  # group2
+        writer = csv.writer(f)
+
+    # group1 カラム
+    with open(r'C:\data\data' + now.strftime('%Y%m%d_%H%M%S') + '.csv', 'a') as f:  # 既存のCSVに追記 各カラムタイトルを
+        writer = csv.writer(f)
+        writer.writerow(['事業所名(S種別)', '電話', '法人名', '法人設立日', '法人代表者', '住所', '事業所の開始年月日', '主たる対象', '利用定員', '吸引', '吸入・ネブライザー',
+                         '経管栄養（胃ろうを含む）', '中心静脈栄養', '導尿', '在宅酸素療法', '咽頭エアウェイ', 'パルスオキシメーター', '気管切開部の管理（ガーゼ交換等）', '人工呼吸器の管理', '服薬管理'])
+    # group2 カラム
+    with open(r'C:\data\data_group2' + now.strftime('%Y%m%d_%H%M%S') + '.csv', 'a') as f:  # 既存のCSVに追記 各カラムタイトルを
+        writer = csv.writer(f)
+        writer.writerow(['事業所名(S種別)', '電話', '住所', '支援研修者(常勤専従人)', '支援研修者(常勤非専従人)',
+                         '支援研修者(非常勤専従人)', '支援研修者(非常勤非専従人)', 'コーディネーター養成(常勤専従人)', 'コーディネーター養成(常勤非専従人)', 'コーディネーター養成(非常勤専従人)', 'コーディネーター養成(非常勤非専従人)', '重度の肢体不自由等の常時介護を要する利用者に対する..'])
+        # try:
+        #     writer.writerow(['u\2014']) # 強制unicodeerror
+        # except UnicodeEncodeError:
+        #     logger.error("UnicodeEncodeError!!")
+
+    try:
+        main()
+    except Exception as e:
+        import traceback
+        # エラー位置を取得して一緒に表示
+        error_place = traceback.print_exc()
+        logger.error(e, exc_info=True)
+        # メッセージボックス表示して終了
+        messagebox.showerror("全体エラー", e)
+        #messagebox.showerror("全体エラー", e + '位置' + ':' + error_place)
+        browser.close()
+        browser.quit()
